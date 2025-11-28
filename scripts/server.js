@@ -5,13 +5,24 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+let Busboy;
+try{
+  Busboy = require('busboy');
+}catch(e){
+  // busboy not installed; multipart support will be unavailable.
+  Busboy = null;
+}
 
 const PORT = process.env.PORT || 3000;
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'feedbacks.jsonl');
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
 if (!fs.existsSync(LOG_DIR)) {
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+}
+if (!fs.existsSync(UPLOADS_DIR)) {
+  try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 }
 
 function sendJSON(res, code, obj) {
@@ -32,6 +43,48 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/feedback') {
+    const contentType = req.headers['content-type'] || '';
+    // If multipart/form-data and busboy is available, parse file uploads.
+    if (contentType.indexOf('multipart/form-data') === 0 && Busboy) {
+      const busboy = Busboy({ headers: req.headers });
+      const fields = {};
+      const filesSaved = [];
+
+      busboy.on('field', (name, val) => {
+        fields[name] = val;
+      });
+
+      busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+        // sanitize filename
+        const safeName = (Date.now() + '-' + filename).replace(/[^a-zA-Z0-9-_.]/g, '_');
+        const saveTo = path.join(UPLOADS_DIR, safeName);
+        const ws = fs.createWriteStream(saveTo);
+        file.pipe(ws);
+        ws.on('close', () => {
+          filesSaved.push({ fieldname, originalName: filename, savedAs: safeName, size: fs.statSync(saveTo).size, type: mimetype, path: saveTo });
+        });
+      });
+
+      busboy.on('finish', () => {
+        try {
+          const obj = Object.assign({}, fields);
+          obj.fileUploads = filesSaved;
+          obj._receivedAt = new Date().toISOString();
+          obj._sourceIp = req.socket.remoteAddress || null;
+          console.log('Received multipart feedback:', obj);
+          try { fs.appendFileSync(LOG_FILE, JSON.stringify(obj) + '\n', 'utf8'); } catch(e){ console.error('Failed to write log file:', e && e.message); }
+          sendJSON(res, 200, { ok: true, received: obj._receivedAt, files: filesSaved.length });
+        } catch (err) {
+          console.error('Error processing multipart body:', err && err.message);
+          sendJSON(res, 500, { ok: false, error: 'server_error' });
+        }
+      });
+
+      req.pipe(busboy);
+      return;
+    }
+
+    // Fallback: parse JSON body
     let body = '';
     req.setEncoding('utf8');
     req.on('data', (chunk) => body += chunk);

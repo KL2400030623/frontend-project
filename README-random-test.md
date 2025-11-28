@@ -5,13 +5,17 @@ This repository includes a small Node script to POST randomized feedback JSON to
 Usage
 
 1. Ensure you have Node.js installed (Node 12+ recommended).
-2. (Optional) Start the included test server to accept submissions locally:
+2. Install dependencies (adds multipart parsing support):
+
+   npm install
+
+3. (Optional) Start the included test server to accept submissions locally:
 
    npm run start-server
 
-   The server listens on port 3000 by default and will append received JSON to `logs/feedbacks.jsonl`.
+   The server listens on port 3000 by default and will append received JSON to `logs/feedbacks.jsonl` and store uploaded files in `uploads/`.
 
-3. Run the script with node (or use the npm helper):
+4. Run the script with node (or use the npm helper):
 
    node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 50 --delay 100 --concurrency 1
    # or
