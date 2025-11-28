@@ -127,12 +127,11 @@
         return ok;
       }
 
-      form.addEventListener('submit', function(e){
+      form.addEventListener('submit', async function(e){
         e.preventDefault();
         success.style.display = 'none';
 
         if(!validate()){
-          // focus on first error field
           const firstErr = document.querySelector('.error:not(:empty)');
           if(firstErr){
             const id = firstErr.id.replace('err-','');
@@ -142,28 +141,56 @@
           return;
         }
 
-        // build form data object for console logging
+        // Prepare a minimal data object for console logging
         const data = {
           name: form.name.value.trim(),
           course: form.course.value.trim(),
           rating: form.rating.value,
-          comments: form.comments.value.trim(),
-          file: null
+          comments: form.comments.value.trim()
         };
 
-        if(form.file.files && form.file.files.length){
-          const f = form.file.files[0];
-          data.file = { name: f.name, size: f.size, type: f.type };
+        // If page opened via file:// we cannot POST to relative endpoints reliably; fallback to simulated submit
+        const isFileProtocol = window.location.protocol === 'file:';
+
+        if(isFileProtocol){
+          // No network: log and show success locally
+          console.log('Simulated feedback submission (no network):', data);
+          success.style.display = 'block';
+          setTimeout(()=> form.reset(), 700);
+          return;
         }
 
-        // Simulate submission: show success, log to console
-        console.log('Feedback form submitted:', data);
-        success.style.display = 'block';
+        // Build FormData for real submission (supports file uploads)
+        const formData = new FormData();
+        formData.append('name', data.name);
+        formData.append('course', data.course);
+        formData.append('rating', data.rating);
+        formData.append('comments', data.comments);
 
-        // clear form after a short delay to let user see the success message
-        setTimeout(()=>{
-          form.reset();
-        }, 700);
+        // Include actual file if provided
+        if(form.file.files && form.file.files.length){
+          formData.append('file', form.file.files[0]);
+        } else if(window._autoAttachSampleFile){
+          // attach a small sample text file when autotest requested
+          const blob = new Blob(["Sample feedback file for testing\n" + data.name + '\n'], { type: 'text/plain' });
+          formData.append('file', blob, 'sample.txt');
+        }
+
+        try{
+          const resp = await fetch('/feedback', { method: 'POST', body: formData });
+          if(!resp.ok) throw new Error('Server responded ' + resp.status);
+          const json = await resp.json().catch(()=>null);
+          console.log('Feedback submitted to server:', json, data);
+          success.style.display = 'block';
+          // clear form after short delay
+          setTimeout(()=>{
+            form.reset();
+            window._autoAttachSampleFile = false;
+          }, 700);
+        }catch(err){
+          console.error('Submission failed:', err);
+          alert('Submission failed: ' + (err && err.message ? err.message : 'network error'));
+        }
       });
 
       // Randomize button support - fill form with plausible test values for quick testing
