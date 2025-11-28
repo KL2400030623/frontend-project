@@ -17,7 +17,7 @@ Usage
 
 4. Run the script with node (or use the npm helper):
 
-   node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 50 --delay 100 --concurrency 1
+      node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 50 --delay 100 --concurrency 1
    # or
    npm run send-random -- --url http://localhost:3000/feedback --count 50 --delay 100
 
@@ -28,6 +28,12 @@ Usage
       node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 20 --multipart
 
    This will POST form fields and a small sample file named `sample.txt` for each submission.
+
+   If you want to upload a real file from disk with each submission, combine `--multipart` with `--file`:
+
+      node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 10 --multipart --file ./path/to/file.pdf
+
+   This will attach the given file to every request.
 
 Options
 

@@ -6,6 +6,8 @@
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -139,6 +141,20 @@ async function run(){
   const count = parseInt(args.count || '10', 10);
   const delay = parseInt(args.delay || '200', 10);
   const concurrency = Math.max(1, parseInt(args.concurrency || '1', 10));
+  const multipartFlag = Boolean(args.multipart);
+  const filePathArg = args.file || null;
+  let fileBuf = null;
+  let fileName = null;
+  if (filePathArg) {
+    try {
+      fileBuf = fs.readFileSync(filePathArg);
+      fileName = path.basename(filePathArg);
+      console.log('Will attach file for uploads:', fileName);
+    } catch (e) {
+      console.error('Failed to read file', filePathArg, e && e.message);
+      process.exit(1);
+    }
+  }
 
   console.log(`Sending ${count} randomized feedback submissions to ${url} (concurrency=${concurrency}, delay=${delay}ms)`);
 
@@ -155,10 +171,11 @@ async function run(){
       setTimeout(async ()=>{
         try{
           let res;
-          if (args.multipart) {
-            // create a small sample file Buffer to upload
-            const sample = Buffer.from('Sample test file for ' + payload.name + '\n', 'utf8');
-            res = await sendMultipart(url, { name: payload.name, course: payload.course, rating: payload.rating, comments: payload.comments }, sample, 'sample.txt', 'file');
+          if (multipartFlag) {
+            // use provided file or generate a small sample
+            const sample = fileBuf || Buffer.from('Sample test file for ' + payload.name + '\n', 'utf8');
+            const fName = fileName || 'sample.txt';
+            res = await sendMultipart(url, { name: payload.name, course: payload.course, rating: payload.rating, comments: payload.comments }, sample, fName, 'file');
           } else {
             res = await sendJson(url, payload);
           }

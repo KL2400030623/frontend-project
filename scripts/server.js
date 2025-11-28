@@ -115,10 +115,22 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && req.url === '/') {
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback Receiver</title></head><body><h2>Feedback receiver</h2><p>POST JSON to <code>/feedback</code>. Logs are appended to <code>logs/feedbacks.jsonl</code>.</p></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback Receiver</title></head><body><h2>Feedback receiver</h2><ul><li><a href="/form">Open feedback form</a></li><li><a href="/submissions">View recent submissions</a></li><li><a href="/uploads/">View uploads</a></li><li><a href="/admin">Admin (manage uploads)</a></li></ul><p>POST JSON to <code>/feedback</code>. Logs are appended to <code>logs/feedbacks.jsonl</code>.</p></body></html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;
+  }
+
+  // Serve the feedback form file if present in repo root
+  if (req.method === 'GET' && req.url === '/form') {
+    const formPath = path.join(__dirname, '..', 'feedback.html');
+    if (fs.existsSync(formPath)) {
+      const data = fs.readFileSync(formPath, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+      return;
+    }
+    return sendJSON(res, 404, { ok: false, error: 'form_not_found' });
   }
 
   // Simple submissions viewer: show recent submissions from the JSONL log
@@ -192,6 +204,48 @@ const server = http.createServer((req, res) => {
       console.error('Failed to serve upload', e && e.message);
       return sendJSON(res, 500, { ok: false, error: 'server_error' });
     }
+  }
+
+  // Admin UI to manage uploads (simple, no auth)
+  if (req.method === 'GET' && req.url === '/admin') {
+    try {
+      const files = fs.existsSync(UPLOADS_DIR) ? fs.readdirSync(UPLOADS_DIR) : [];
+      const rows = files.map(f => `<tr><td>${escapeHtml(f)}</td><td><form method="POST" action="/admin/delete" onsubmit="return confirm('Delete ${f}?')"><input type="hidden" name="file" value="${escapeHtml(f)}" /><button type="submit">Delete</button></form></td></tr>`).join('');
+      const page = `<!doctype html><html><head><meta charset="utf-8"><title>Admin - Uploads</title></head><body><h2>Uploads</h2><table><thead><tr><th>File</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table><p><a href="/">Home</a></p></body></html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(page);
+      return;
+    } catch (e) {
+      console.error('Admin UI error', e && e.message);
+      return sendJSON(res, 500, { ok: false, error: 'server_error' });
+    }
+  }
+
+  // Handle admin delete (POST /admin/delete) to remove an uploaded file
+  if (req.method === 'POST' && req.url === '/admin/delete') {
+    // collect body
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const params = new URLSearchParams(body);
+        const file = params.get('file');
+        if (!file) return sendJSON(res, 400, { ok: false, error: 'missing_file' });
+        const target = path.join(UPLOADS_DIR, file);
+        if (target.indexOf(UPLOADS_DIR) !== 0) return sendJSON(res, 403, { ok: false, error: 'forbidden' });
+        if (fs.existsSync(target)) {
+          fs.unlinkSync(target);
+        }
+        // redirect back to admin
+        res.writeHead(302, { Location: '/admin' });
+        res.end();
+      } catch (err) {
+        console.error('Delete failed', err && err.message);
+        sendJSON(res, 500, { ok: false, error: 'server_error' });
+      }
+    });
+    return;
   }
 
   // Not found
