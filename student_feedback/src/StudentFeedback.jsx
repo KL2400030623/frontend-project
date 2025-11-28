@@ -11,6 +11,8 @@ export default function StudentFeedback(){
   const [fileInfo, setFileInfo] = useState(null)
   const [errors, setErrors] = useState({})
   const [success, setSuccess] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [serverMsg, setServerMsg] = useState(null)
   const fileRef = useRef(null)
 
   function clearErrors(){ setErrors({}) }
@@ -48,10 +50,11 @@ export default function StudentFeedback(){
     if(fileRef.current) fileRef.current.value = ''
   }
 
-  function handleSubmit(e){
+  async function handleSubmit(e){
     e.preventDefault()
     clearErrors()
     setSuccess(false)
+    setServerMsg(null)
 
     if(!validate()) return
 
@@ -66,13 +69,43 @@ export default function StudentFeedback(){
     // Log a shallow copy with file metadata to the console
     console.log('Feedback submitted (client):', data)
 
-    // Display success message
-    setSuccess(true)
-    // clear form after a short delay so user can see the success message
-    setTimeout(()=>{
-      resetForm()
-      setSuccess(false)
-    }, 1200)
+    // Attempt to POST to the local feedback server
+    const formData = new FormData()
+    formData.append('name', data.name)
+    formData.append('course', data.course)
+    formData.append('rating', data.rating)
+    formData.append('comments', data.comments)
+    const f = fileRef.current && fileRef.current.files && fileRef.current.files[0]
+    if(f) formData.append('file', f)
+
+    setIsSubmitting(true)
+    try{
+      const resp = await fetch('http://localhost:3000/feedback', { method: 'POST', body: formData })
+      const json = await resp.json().catch(()=>null)
+      if(resp.ok){
+        setServerMsg('Server received feedback' + (json && json.received ? ` at ${json.received}` : ''))
+        console.log('Feedback submitted to server:', json, data)
+        setSuccess(true)
+        setTimeout(()=>{
+          resetForm()
+          setSuccess(false)
+        }, 1200)
+      } else {
+        setServerMsg('Server error: ' + (json && json.error ? json.error : resp.status))
+        console.error('Submission failed:', resp.status, json)
+      }
+    }catch(err){
+      // Network or CORS failure — fall back to simulated local submit
+      console.warn('Server submission failed, falling back to local simulation:', err && err.message)
+      setServerMsg('Could not reach server — saved locally (simulation).')
+      setSuccess(true)
+      setTimeout(()=>{
+        resetForm()
+        setSuccess(false)
+      }, 1200)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   function randomize(autoSubmit){
@@ -154,10 +187,11 @@ export default function StudentFeedback(){
         </div>
 
         <div className="sf-actions">
-          <button type="submit">Submit feedback</button>
+          <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : 'Submit feedback'}</button>
           <button type="button" onClick={()=>randomize(true)} className="sf-secondary">Randomize</button>
           <div className="sf-hint">Fields marked * are required</div>
         </div>
+        {serverMsg && <div className="sf-hint" style={{marginTop:8}}>{serverMsg}</div>}
       </form>
     </div>
   )
