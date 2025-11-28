@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Feedback Form</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;line-height:1.4}
+    body{max-width:900px;margin:40px auto;padding:20px}
+    h1{font-size:1.6rem;margin-bottom:0.25rem}
+    form{background:#fff;border:1px solid #e6e6e6;padding:18px;border-radius:8px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    label{display:block;font-weight:600;margin-bottom:6px}
+    input[type=text], select, textarea, input[type=file]{width:100%;padding:8px;border-radius:6px;border:1px solid #ccc}
+    textarea{min-height:120px;resize:vertical}
+    .col{flex:1 1 220px;min-width:220px}
+    .actions{display:flex;gap:10px;align-items:center}
+    button{background:#0366d6;color:white;border:none;padding:10px 14px;border-radius:6px;cursor:pointer}
+    .error{color:#8b0000;font-size:0.9rem;margin-top:6px}
+    .success{background:#e6ffed;border:1px solid #27ae60;color:#075c2a;padding:10px;border-radius:6px;margin-bottom:12px;display:none}
+    .hint{font-size:0.9rem;color:#666}
+    @media (max-width:520px){.col{min-width:100%}}
+  </style>
+</head>
+<body>
+  <h1>Course Feedback</h1>
+  <p class="hint">Please leave honest feedback about your course. You can optionally attach a file (screenshot or document).</p>
+
+  <div id="success" class="success" role="status" aria-live="polite">Thanks — your feedback was submitted successfully.</div>
+
+  <form id="feedbackForm" novalidate>
+    <div class="row">
+      <div class="col">
+        <label for="name">Full name *</label>
+        <input id="name" name="name" type="text" required placeholder="Your full name" />
+        <div id="err-name" class="error" aria-live="polite"></div>
+      </div>
+
+      <div class="col">
+        <label for="course">Course *</label>
+        <select id="course" name="course" required>
+          <option value="">-- Select course --</option>
+          <option>Math 101</option>
+          <option>History 201</option>
+          <option>CS 301</option>
+          <option>Physics 102</option>
+        </select>
+        <div id="err-course" class="error" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <label for="rating">Rating (1-5) *</label>
+        <select id="rating" name="rating" required>
+          <option value="">-- Select rating --</option>
+          <option value="1">1 - Poor</option>
+          <option value="2">2 - Fair</option>
+          <option value="3">3 - Good</option>
+          <option value="4">4 - Very good</option>
+          <option value="5">5 - Excellent</option>
+        </select>
+        <div id="err-rating" class="error" aria-live="polite"></div>
+      </div>
+
+      <div class="col">
+        <label for="file">Attach file (optional)</label>
+        <input id="file" name="file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
+        <div id="err-file" class="error" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label for="comments">Comments *</label>
+      <textarea id="comments" name="comments" required placeholder="Write your comments (min 10 characters)"></textarea>
+      <div id="err-comments" class="error" aria-live="polite"></div>
+    </div>
+
+    <div class="actions">
+      <button type="submit">Submit feedback</button>
+      <button type="button" id="randomizeBtn" style="background:#6c757d;color:#fff;border:none;padding:10px 14px;border-radius:6px;cursor:pointer">Randomize</button>
+      <div class="hint">Fields marked * are required</div>
+    </div>
+  </form>
+
+  <script>
+    (function(){
+      const form = document.getElementById('feedbackForm');
+      const success = document.getElementById('success');
+
+      function clearErrors(){
+        Array.from(document.querySelectorAll('.error')).forEach(el=>el.textContent='');
+      }
+
+      function showError(id,msg){
+        const el = document.getElementById('err-'+id);
+        if(el) el.textContent = msg;
+      }
+
+      function validate(){
+        clearErrors();
+        let ok = true;
+        const name = form.name.value.trim();
+        const course = form.course.value.trim();
+        const rating = form.rating.value;
+        const comments = form.comments.value.trim();
+        const fileInput = form.file;
+
+        if(!name){ showError('name','Please enter your full name.'); ok=false; }
+        if(!course){ showError('course','Please select a course.'); ok=false; }
+        if(!rating){ showError('rating','Please select a rating between 1 and 5.'); ok=false; }
+        if(!comments || comments.length < 10){ showError('comments','Please write at least 10 characters.'); ok=false; }
+
+        if(fileInput && fileInput.files && fileInput.files.length){
+          const f = fileInput.files[0];
+          const maxBytes = 5 * 1024 * 1024; // 5MB
+          const allowed = ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','image/png','image/jpeg'];
+          if(f.size > maxBytes){ showError('file','File is too large (max 5MB).'); ok=false; }
+          if(allowed.indexOf(f.type) === -1){
+            // sometimes older docs don't report type; also validate by extension
+            const ext = f.name.split('.').pop().toLowerCase();
+            const allowedExt = ['pdf','doc','docx','png','jpg','jpeg'];
+            if(allowedExt.indexOf(ext) === -1){ showError('file','Unsupported file type. Allowed: pdf, doc, docx, png, jpg.'); ok=false; }
+          }
+        }
+
+        return ok;
+      }
+
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        success.style.display = 'none';
+
+        if(!validate()){
+          // focus on first error field
+          const firstErr = document.querySelector('.error:not(:empty)');
+          if(firstErr){
+            const id = firstErr.id.replace('err-','');
+            const field = document.getElementById(id);
+            if(field) field.focus();
+          }
+          return;
+        }
+
+        // build form data object for console logging
+        const data = {
+          name: form.name.value.trim(),
+          course: form.course.value.trim(),
+          rating: form.rating.value,
+          comments: form.comments.value.trim(),
+          file: null
+        };
+
+        if(form.file.files && form.file.files.length){
+          const f = form.file.files[0];
+          data.file = { name: f.name, size: f.size, type: f.type };
+        }
+
+        // Simulate submission: show success, log to console
+        console.log('Feedback form submitted:', data);
+        success.style.display = 'block';
+
+        // clear form after a short delay to let user see the success message
+        setTimeout(()=>{
+          form.reset();
+        }, 700);
+      });
+
+      // Randomize button support - fill form with plausible test values for quick testing
+      const randomizeBtn = document.getElementById('randomizeBtn');
+      // randomize helper so we can call it from the button or automatically via URL flag
+      function randomizeForm(autoSubmit){
+        const names = ['Alice Park','Bob Smith','Carla Jones','Daniel Lee','Eva Kim','Frank Zhao'];
+        const commentsSamples = [
+          'Great course! Learned a lot and enjoyed the projects.',
+          'Could use more real-world examples, but instructor was helpful.',
+          'Pace was quick but manageable; more office hours would help.',
+          'I liked the labs and exercises. Thanks!',
+          'The course content was clear and well-structured.'
+        ];
+        function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+        form.name.value = pick(names);
+        // pick a course option that has a non-empty value/text
+        const courseOptions = Array.from(form.course.options).filter(o=>o.value || o.text.trim());
+        if(courseOptions.length) form.course.value = (pick(courseOptions).text || pick(courseOptions).value);
+        form.rating.value = String(Math.floor(Math.random()*5)+1);
+        form.comments.value = pick(commentsSamples);
+        // clear file input (we can't attach a real file programmatically reliably)
+        try{ form.file.value = ''; }catch(e){}
+
+        console.log('Form randomized for testing');
+
+        if(autoSubmit){
+          // auto-submit after a short delay so validation runs and user sees the filled form
+          setTimeout(()=>{
+            try{
+              if(typeof form.requestSubmit === 'function') form.requestSubmit();
+              else form.querySelector('button[type=submit]').click();
+            }catch(e){ console.warn('Auto-submit failed', e); }
+          }, 300);
+        }
+      }
+
+      if(randomizeBtn){
+        randomizeBtn.addEventListener('click', ()=> randomizeForm(true));
+      }
+
+      // If page URL contains '?autotest=1' then perform one randomized submission automatically
+      try{
+        const params = new URLSearchParams(window.location.search);
+        if(params.get('autotest') === '1'){
+          console.log('Auto-test flag detected in URL — running one randomized submission');
+          // small delay to let page render before filling/submitting
+          setTimeout(()=> randomizeForm(true), 350);
+        }
+      }catch(e){ /* ignore URL parsing errors in older browsers */ }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "frontend-project",
+  "version": "0.1.0",
+  "description": "Frontend project with feedback form and test scripts",
+  "scripts": {
+    "send-random": "node scripts/send_random_feedback.js",
+    "start-server": "node scripts/server.js"
+  },
+  "author": "",
+  "license": "MIT"
+}
