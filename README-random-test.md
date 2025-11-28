@@ -21,6 +21,14 @@ Usage
    # or
    npm run send-random -- --url http://localhost:3000/feedback --count 50 --delay 100
 
+   Multipart uploads
+
+   The sender can also perform multipart/form-data uploads (attach a small generated sample file) by adding the `--multipart` flag:
+
+      node scripts/send_random_feedback.js --url http://localhost:3000/feedback --count 20 --multipart
+
+   This will POST form fields and a small sample file named `sample.txt` for each submission.
+
 Options
 
 --url        The endpoint to POST to. Defaults to http://localhost:3000/feedback

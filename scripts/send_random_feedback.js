@@ -81,6 +81,58 @@ function sendJson(urlString, obj){
   });
 }
 
+function buildMultipart(obj, fileBuf, filename, fieldName){
+  const boundary = '----node-multipart-' + Math.random().toString(16).slice(2);
+  const parts = [];
+  function push(str){ parts.push(Buffer.from(String(str))); }
+
+  Object.keys(obj).forEach(key => {
+    push(`--${boundary}\r\n`);
+    push(`Content-Disposition: form-data; name="${key}"\r\n\r\n`);
+    push(`${String(obj[key])}\r\n`);
+  });
+
+  if(fileBuf){
+    push(`--${boundary}\r\n`);
+    push(`Content-Disposition: form-data; name="${fieldName || 'file'}"; filename="${filename}"\r\n`);
+    push(`Content-Type: application/octet-stream\r\n\r\n`);
+    parts.push(fileBuf);
+    parts.push(Buffer.from('\r\n'));
+  }
+
+  push(`--${boundary}--\r\n`);
+
+  const body = Buffer.concat(parts);
+  return { body, boundary };
+}
+
+function sendMultipart(urlString, obj, fileBuf, filename, fieldName){
+  return new Promise((resolve, reject)=>{
+    const url = new URL(urlString);
+    const { body, boundary } = buildMultipart(obj, fileBuf, filename, fieldName);
+    const opts = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + (url.search || ''),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'multipart/form-data; boundary=' + boundary,
+        'Content-Length': body.length
+      }
+    };
+    const lib = url.protocol === 'https:' ? https : http;
+    const req = lib.request(opts, (res)=>{
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', d=>buf += d);
+      res.on('end', ()=>resolve({ statusCode: res.statusCode, body: buf }));
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 async function run(){
   const args = parseArgs();
   const url = args.url || 'http://localhost:3000/feedback';
@@ -102,7 +154,14 @@ async function run(){
       const payload = makeRandomFeedback();
       setTimeout(async ()=>{
         try{
-          const res = await sendJson(url, payload);
+          let res;
+          if (args.multipart) {
+            // create a small sample file Buffer to upload
+            const sample = Buffer.from('Sample test file for ' + payload.name + '\n', 'utf8');
+            res = await sendMultipart(url, { name: payload.name, course: payload.course, rating: payload.rating, comments: payload.comments }, sample, 'sample.txt', 'file');
+          } else {
+            res = await sendJson(url, payload);
+          }
           succeeded++;
           console.log(`#${i+1} -> ${res.statusCode} ${res.body ? (' ' + res.body.slice(0,120)) : ''}`);
         }catch(err){

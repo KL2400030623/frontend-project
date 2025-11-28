@@ -137,13 +137,20 @@ const server = http.createServer((req, res) => {
       last.forEach((ln, idx) => {
         try {
           const obj = JSON.parse(ln);
-          rows += `<tr><td>${idx+1}</td><td>${escapeHtml(obj.name||'')}</td><td>${escapeHtml(obj.course||'')}</td><td>${escapeHtml(String(obj.rating||''))}</td><td>${escapeHtml((obj.comments||'').slice(0,120))}</td><td>${escapeHtml(obj._receivedAt||'')}</td></tr>`;
+          // build file links if any
+          let fileCell = '';
+          if (Array.isArray(obj.fileUploads) && obj.fileUploads.length) {
+            fileCell = obj.fileUploads.map(f => `<a href="/uploads/${encodeURIComponent(f.savedAs)}" target="_blank">${escapeHtml(f.originalName||f.savedAs)}</a>`).join('<br>');
+          } else {
+            fileCell = '';
+          }
+          rows += `<tr><td>${idx+1}</td><td>${escapeHtml(obj.name||'')}</td><td>${escapeHtml(obj.course||'')}</td><td>${escapeHtml(String(obj.rating||''))}</td><td>${escapeHtml((obj.comments||'').slice(0,120))}</td><td>${escapeHtml(obj._receivedAt||'')}</td><td>${fileCell}</td></tr>`;
         } catch(e) {
-          rows += `<tr><td>${idx+1}</td><td colspan="5">(invalid JSON)</td></tr>`;
+          rows += `<tr><td>${idx+1}</td><td colspan="6">(invalid JSON)</td></tr>`;
         }
       });
 
-      const page = `<!doctype html><html><head><meta charset="utf-8"><title>Recent submissions</title><style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f6f8fa}</style></head><body><h2>Recent submissions (latest 50)</h2><table><thead><tr><th>#</th><th>Name</th><th>Course</th><th>Rating</th><th>Comments (truncated)</th><th>Received at</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+      const page = `<!doctype html><html><head><meta charset="utf-8"><title>Recent submissions</title><style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f6f8fa}</style></head><body><h2>Recent submissions (latest 50)</h2><p><a href="/uploads/">View uploads directory</a></p><table><thead><tr><th>#</th><th>Name</th><th>Course</th><th>Rating</th><th>Comments (truncated)</th><th>Received at</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(page);
       return;
@@ -151,6 +158,39 @@ const server = http.createServer((req, res) => {
       console.error('Failed to render submissions:', err && err.message);
       sendJSON(res, 500, { ok: false, error: 'server_error' });
       return;
+    }
+  }
+
+  // Serve uploads directory listing or files
+  if (req.method === 'GET' && req.url.startsWith('/uploads')) {
+    const rel = decodeURIComponent(req.url.replace('/uploads', '')) || '/';
+    const p = path.join(UPLOADS_DIR, rel);
+    if (p.indexOf(UPLOADS_DIR) !== 0) { // prevent path traversal
+      return sendJSON(res, 403, { ok: false, error: 'forbidden' });
+    }
+
+    try {
+      const stat = fs.existsSync(p) && fs.statSync(p);
+      if (!stat) {
+        return sendJSON(res, 404, { ok: false, error: 'not_found' });
+      }
+      if (stat.isDirectory()) {
+        // list files
+        const files = fs.readdirSync(p);
+        const list = files.map(f => `<li><a href="/uploads/${encodeURIComponent(f)}">${escapeHtml(f)}</a></li>`).join('');
+        const html = `<!doctype html><html><body><h2>Uploads</h2><ul>${list}</ul></body></html>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+      // serve file
+      const stream = fs.createReadStream(p);
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="' + path.basename(p) + '"' });
+      stream.pipe(res);
+      return;
+    } catch (e) {
+      console.error('Failed to serve upload', e && e.message);
+      return sendJSON(res, 500, { ok: false, error: 'server_error' });
     }
   }
 
